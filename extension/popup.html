@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<style>
+  :root { --bg:#ffffff; --text:#1b2132; --muted:#6e7689; --ok:#1f9d6b; --bad:#e5484d; --line:#e4e7ef; --soft:#f3f5fa; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#171b24; --text:#e8ebf2; --muted:#9aa2b4; --ok:#4cd29a; --bad:#ff6369; --line:#2a303d; --soft:#1d222d; } }
+  body { margin:0; width:300px; background:var(--bg); color:var(--text); font:13px/1.5 "Microsoft JhengHei UI","Segoe UI",sans-serif; }
+  header { display:flex; align-items:center; gap:10px; padding:14px 16px; border-bottom:1px solid var(--line); }
+  header img { width:28px; height:28px; }
+  h1 { font-size:14px; margin:0; }
+  section { padding:12px 16px; }
+  .row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--line); }
+  .row:last-child { border-bottom:none; }
+  .k { color:var(--muted); }
+  .ok { color:var(--ok); font-weight:600; } .bad { color:var(--bad); font-weight:600; }
+  .who { background:var(--soft); border-radius:8px; padding:8px 10px; margin-top:8px; min-height:20px; }
+  p.hint { color:var(--muted); font-size:12px; margin:10px 0 0; }
+</style>
+</head>
+<body>
+<header><img src="icon48.png" alt=""><h1>會議記錄助手 連接器</h1></header>
+<section>
+  <div class="row"><span class="k">桌面程式</span><span id="app">檢查中…</span></div>
+  <div class="row"><span class="k">記錄中</span><span id="rec">—</span></div>
+  <div class="row"><span class="k">會議</span><span id="meet">—</span></div>
+  <div class="k" style="margin-top:8px">目前偵測到正在說話</div>
+  <div class="who" id="who">—</div>
+  <p class="hint">在 Google Meet 或 Teams 網頁版開會時保持開啟。若一直偵測不到，請在會議中開啟「字幕」。資料只傳到這台電腦。</p>
+</section>
+<script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+# install torch with CUDA first: pip install torch --index-url https://download.pytorch.org/whl/cu130
+transformers>=5.13.0
+accelerate
+silero-vad
+speechbrain
+soundfile
+librosa
+opencc-python-reimplemented
+PySide6
+PyAudioWPatch
+soxr
+pyinstaller
+sherpa-onnx
+hf_xet
+onnxruntime

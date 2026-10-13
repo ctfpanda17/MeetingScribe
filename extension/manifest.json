@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "會議記錄助手 連接器",
+  "short_name": "會議記錄助手",
+  "version": "0.1.3",
+  "description": "把 Google Meet / Microsoft Teams 網頁版中「誰正在說話」傳給本機的會議記錄助手，讓逐字稿直接標上與會者姓名。資料只傳到這台電腦（127.0.0.1）。",
+  "icons": { "16": "icon16.png", "32": "icon32.png", "48": "icon48.png", "128": "icon128.png" },
+  "action": { "default_popup": "popup.html", "default_title": "會議記錄助手 連接器" },
+  "background": { "service_worker": "background.js" },
+  "host_permissions": ["http://127.0.0.1:47833/*"],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://meet.google.com/*",
+        "https://teams.microsoft.com/*",
+        "https://teams.live.com/*",
+        "https://teams.cloud.microsoft/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

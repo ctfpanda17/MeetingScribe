@@ -1,0 +1,31 @@
+# runtime / build output
+.venv/
+dist/
+build/
+__pycache__/
+*.pyc
+*.log
+
+# models (downloaded by the app on first run / added by the user)
+models/
+tests/spk/
+tests/spk_unused/
+*.onnx
+*.safetensors
+*.ckpt
+*.bin
+
+# personal data: meeting transcripts & recordings, settings, saved voiceprints
+會議紀錄/
+data/
+
+# copyrighted test audio downloaded from YouTube (and labels derived from it)
+tests/podcast*
+tests/kk_5min*
+tests/sample2*
+tests/*.webm
+tests/en.*
+
+# extension signing key (private!) and packed builds
+*.pem
+*.crx
