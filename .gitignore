@@ -29,3 +29,6 @@ tests/en.*
 # extension signing key (private!) and packed builds
 *.pem
 *.crx
+
+# release archives
+release/
