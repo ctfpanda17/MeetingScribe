@@ -1,5 +1,7 @@
 # 會議記錄助手 MeetingScribe
 
+**繁體中文** | [English](README.en.md)
+
 開會當下即時把每個人說的話轉成文字，並依「聲音」自動分出不同的說話者。全部在本機執行，音訊不會上傳到任何地方。
 
 - 語音辨識：可自行選擇 / 加入模型（預設 SenseVoice；也支援 Whisper、Breeze-ASR-25、NVIDIA nemotron、Paraformer 等）
@@ -8,7 +10,7 @@
 
 ## 給使用者：怎麼用
 
-1. 解壓縮 `MeetingScribe.zip`，執行資料夾裡的 **`MeetingScribe.exe`**
+1. 到 [Releases](https://github.com/ctfpanda17/MeetingScribe/releases) 下載 `MeetingScribe-v0.1.0-win64.7z`，用 [7-Zip](https://www.7-zip.org/) 解壓縮（Windows 11 也可直接解壓），執行資料夾裡的 **`MeetingScribe.exe`**
 2. 第一次開啟會自動下載預設模型（約 0.5 GB，需要網路，網路中斷會自動續傳），之後可離線使用
 3. 選「音源」：
    - **線上會議 Meet / Teams（對方 + 我）**：預設選項，對方的聲音從電腦收，你的聲音從麥克風收
