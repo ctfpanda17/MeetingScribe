@@ -6,12 +6,12 @@ import json
 import os
 import queue
 import re
+import struct
 import threading
 import time
 from typing import Callable
 
 import numpy as np
-import soundfile as sf
 import torch
 
 from engines import SAMPLE_RATE, Engine
@@ -22,6 +22,7 @@ from streamdiar import StreamingDiarizer
 from paths import TRANSCRIPT_DIR
 
 MAX_UTTERANCE_SEC = 25.0  # force a cut during very long monologues
+SHORT_FOREIGN_SEC = 3.5  # auto language: English-only sentences up to this long in a Chinese meeting are re-checked
 PREROLL_SEC = 0.3
 PROVISIONAL_AT_SEC = 1.6  # guess the speaker this far into an utterance
 
@@ -75,6 +76,43 @@ class AudioLog:
     def seconds(self) -> float:
         return self.n / SAMPLE_RATE
 
+
+class WavWriter:
+    """16-bit mono WAV whose header is kept up to date while recording, so the file stays playable
+    even if the app is closed or killed before the meeting is finished."""
+
+    HEADER_EVERY = 5.0  # seconds between header updates
+
+    def __init__(self, path: str):
+        self.f = open(path, "wb")
+        self.bytes = 0
+        self.last_header = 0.0
+        self._header()
+
+    def _header(self):
+        pos = self.f.tell()
+        self.f.seek(0)
+        self.f.write(struct.pack("<4sI4s4sIHHIIHH4sI", b"RIFF", 36 + self.bytes, b"WAVE", b"fmt ", 16, 1, 1,
+                                 SAMPLE_RATE, SAMPLE_RATE * 2, 2, 16, b"data", self.bytes))
+        self.f.seek(max(pos, 44))
+        self.f.flush()
+        self.last_header = time.monotonic()
+
+    def write(self, x: np.ndarray):
+        if self.f.closed:
+            return
+        data = (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes()
+        self.f.write(data)
+        self.bytes += len(data)
+        if time.monotonic() - self.last_header >= self.HEADER_EVERY:
+            self._header()
+
+    def close(self):
+        if not self.f.closed:
+            self._header()
+            self.f.close()
+
+
 try:
     from opencc import OpenCC
 
@@ -83,6 +121,20 @@ except Exception:  # pragma: no cover
     _S2T = None
 
 _CJK = r"[㐀-鿿豈-﫿]"
+
+
+_AVATAR = [re.compile(p, re.I) for p in (r"\s*(的)?\s*(個人資料圖片|个人资料图片|大頭貼|头像|頭像)[。.]?$",
+                                         r"^(profile picture|avatar|photo) (of|for)\s+",
+                                         r"['’]s (profile picture|avatar|photo)\.?$", r"\s*(profile picture|avatar)\.?$")]
+
+
+def person_name(label: str) -> str:
+    """Meeting apps label video-less tiles with the avatar ("Kevin Lee 的個人資料圖片。"): keep the name only.
+    (The extension does this too; repeated here for older extension versions.)"""
+    n = re.sub(r"\s+", " ", label or "").strip()
+    for p in _AVATAR:
+        n = p.sub("", n)
+    return n.strip()[:60]
 
 
 def tidy(text: str, traditional: bool, final: bool = False) -> str:
@@ -114,6 +166,7 @@ class MeetingSession:
         self.name_to_sids: dict[str, list[str]] = {}
         self.named: dict[str, str] = {}  # meeting-app name -> speaker id (the meeting app is the authority)
         self.language = (cfg.get("language") or "auto").split("-")[0]
+        self.lang_votes = {"zh": 0, "en": 0}  # auto mode: language of the clearly identifiable sentences so far
         self.latency = int(cfg.get("latency", engine.default_latency()))
         self.traditional = bool(cfg.get("traditional", True))
         self.title = (cfg.get("title") or "").strip() or "會議紀錄"
@@ -144,7 +197,7 @@ class MeetingSession:
         self.seg_emb: dict[int, tuple[np.ndarray, float]] = {}  # seg -> (voiceprint, voiced seconds)
         self.wav = None
         if cfg.get("save_audio", True):
-            self.wav = sf.SoundFile(self.base_path + ".wav", "w", SAMPLE_RATE, 1, "PCM_16")
+            self.wav = WavWriter(self.base_path + ".wav")
         self.registry.lock = self.lock
         self.diar = StreamingDiarizer(turns, encoder.embed, self.registry,
                                       cluster_embed=cfg.get("cluster_embed")) if turns is not None else None
@@ -176,8 +229,9 @@ class MeetingSession:
     def platform_event(self, event: dict):
         """From the browser extension: who the meeting app shows as speaking right now."""
         if event.get("self"):
-            self.platform_self = event["self"]
-        names = [ME if (self.platform_self and n == self.platform_self) else n for n in event.get("speaking", [])]
+            self.platform_self = person_name(event["self"])
+        names = [person_name(n) for n in event.get("speaking", [])]
+        names = [ME if (self.platform_self and n == self.platform_self) else n for n in names if n]
         self.hints.platform_update(names, event.get("t") or time.time(),
                                    HINT_LATENCY.get(event.get("source", ""), (0.4, 0.6)), event.get("platform", ""))
 
@@ -200,6 +254,8 @@ class MeetingSession:
                 while len(self.pending) >= VAD_WINDOW:
                     win, self.pending = self.pending[:VAD_WINDOW], self.pending[VAD_WINDOW:]
                     self._process_window(win)
+            if self.wav is not None:  # all audio is in: finish the recording before the (long) final pass
+                self.wav.close()
             if self.stream is not None:
                 self._end_utterance()
             self.refine_stop.set()
@@ -207,11 +263,11 @@ class MeetingSession:
             if self.refine:
                 self._emit("整理整場會議…")
                 self._refine(full=True)
-            if self.wav is not None:
-                self.wav.close()
             self.save()
             self.emit({"type": "stopped", "files": self.files()})
         except Exception as e:  # keep the UI informed instead of dying silently
+            if self.wav is not None:
+                self.wav.close()
             self.emit({"type": "error", "message": f"{type(e).__name__}: {e}"})
             raise
 
@@ -269,7 +325,7 @@ class MeetingSession:
         self.next_turn_check = TURN_CHECK_EVERY
         self.utt_audio = []
         self.stream = self.engine.new_stream(
-            self.language, self.latency, lambda txt, uid=uid: self._on_partial(uid, txt)
+            self._lang(), self.latency, lambda txt, uid=uid: self._on_partial(uid, txt)
         )
         if len(self.preroll):
             self._feed(self.preroll)
@@ -317,21 +373,50 @@ class MeetingSession:
         self.utt_audio = []
         self.next_turn_check = TURN_CHECK_EVERY
         self.provisional = new_speaker
-        self.stream = self.engine.new_stream(self.language, self.latency, lambda txt: self._on_partial(uid, txt))
+        self.stream = self.engine.new_stream(self._lang(), self.latency, lambda txt: self._on_partial(uid, txt))
         self._feed(audio[cp:])
 
-    def _transcribe_now(self, audio: np.ndarray) -> str:
+    def _transcribe_now(self, audio: np.ndarray, language: str | None = None) -> str:
         """Decode already-recorded audio as fast as possible (no live partials needed)."""
         if self.engine.streaming:
             latency = max(v for _, v in self.engine.latency_options())  # biggest chunks: fewest steps, most accurate
         else:
             latency = 10 ** 7  # no intermediate re-transcriptions, just the final pass
-        stream = self.engine.new_stream(self.language, latency, lambda _t: None)
+        stream = self.engine.new_stream(language or self._lang(), latency, lambda _t: None)
         stream.feed(audio)
         return stream.finish()
 
+    def _zh_meeting(self) -> bool:
+        zh, en = self.lang_votes["zh"], self.lang_votes["en"]
+        return zh >= 3 and zh >= 4 * en
+
+    def _lang(self) -> str:
+        """Language for decoding. With "auto", once the meeting is clearly held in Chinese it is decoded as
+        Chinese: auto-detection turns short sounds and Chinese words into English ("呃" -> "Oh.", "還是" ->
+        "還 think"), while Chinese mode still writes English terms (AI, meet, OK) correctly."""
+        if self.language == "auto" and self._zh_meeting():
+            return "zh"
+        return self.language
+
+    def _fix_language(self, audio: np.ndarray, raw_text: str) -> str:
+        """Auto language: count which language the sentences are in; a short English-only sentence in a
+        Chinese meeting is decoded again as Chinese (the first sentences are decoded before the vote is clear)."""
+        if self.language != "auto":
+            return raw_text
+        cjk = len(re.findall(_CJK, raw_text))
+        latin = len(re.findall(r"[A-Za-z]+", raw_text))
+        if cjk >= 6:
+            self.lang_votes["zh"] += 1
+        elif latin >= 4 and not cjk:
+            self.lang_votes["en"] += 1  # real English speech still comes out as English in Chinese mode
+        if cjk or not latin or len(audio) > SHORT_FOREIGN_SEC * SAMPLE_RATE or not self._zh_meeting():
+            return raw_text
+        return self._transcribe_now(audio, "zh") or raw_text
+
     def _finalize(self, seg_id: int, start: float, audio: np.ndarray, raw_text: str, speaker: str | None = None):
-        text = tidy(raw_text, self.traditional, final=True)
+        text = tidy(self._fix_language(audio, raw_text), self.traditional, final=True)
+        if re.fullmatch(r"[呃額]+[。，？！]*", text):  # a bare hesitation sound is not something anyone said
+            text = ""
         end = start + len(audio) / SAMPLE_RATE
         if not text:
             self.emit({"type": "discard", "seg": seg_id})
@@ -681,13 +766,34 @@ class MeetingSession:
             return
         lines = [f"# {title}", "", f"- 日期：{self.started_at:%Y-%m-%d %H:%M}",
                  f"- 與會者：{'、'.join(dict.fromkeys(s['name'] for s in segs))}", "", "---", ""]
-        for s in segs:
-            lines.append(f"**[{fmt_ts(s['start'])}] {s['name']}**：{s['text']}  ")
+        for start, name, text in paragraphs(segs, lambda s: s["name"]):
+            lines.append(f"**[{fmt_ts(start)}] {name}**：{text}  ")
         with open(self.base_path + ".md", "w", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")
         with open(self.base_path + ".json", "w", encoding="utf-8") as f:
             json.dump({"title": title, "started_at": self.started_at.isoformat(), "segments": segs},
                       f, ensure_ascii=False, indent=1)
+
+
+PARA_GAP = 2.0  # sentences of one speaker closer than this are written as one paragraph
+PARA_MAX = 60.0  # ...up to this long, so timestamps stay useful
+
+
+def paragraphs(segs: list[dict], name_of: Callable[[dict], str]) -> list[tuple[float, str, str]]:
+    """(start, speaker name, text) per paragraph: the recognizer cuts at every short pause, which reads as a
+    stutter of one-line fragments, so a speaker's consecutive sentences are joined for the written record."""
+    out: list[list] = []
+    last_end = -1e9
+    for s in segs:
+        name = name_of(s)
+        if out and out[-1][1] == name and s["start"] - last_end < PARA_GAP and s["end"] - out[-1][0] < PARA_MAX:
+            prev = out[-1][2]
+            sep = "" if re.search(rf"[{_CJK[1:-1]}。，？！；：]$", prev) and re.match(_CJK, s["text"]) else " "
+            out[-1][2] = prev + sep + s["text"]
+        else:
+            out.append([s["start"], name, s["text"]])
+        last_end = s["end"]
+    return [tuple(p) for p in out]
 
 
 def fmt_ts(sec: float) -> str:

@@ -8,6 +8,19 @@
   const PLATFORM = location.host.includes("meet.google") ? "meet" : "teams";
   const SPEAKING_WORDS = /(正在說話|正在讲话|說話中|发言中|is speaking|speaking|is talking)/i;
   const clean = (s) => (s || "").replace(/\s+/g, " ").trim();
+  // Tiles without video carry the avatar's label instead of the bare name ("Kevin Lee 的個人資料圖片。",
+  // "Profile picture of Kevin Lee"): keep only the name.
+  const AVATAR = [
+    /\s*(的)?\s*(個人資料圖片|个人资料图片|大頭貼|头像|頭像)[。.]?$/,
+    /^(profile picture|avatar|photo) (of|for)\s+/i,
+    /['’]s (profile picture|avatar|photo)\.?$/i,
+    /\s*(profile picture|avatar)\.?$/i,
+  ];
+  const personName = (s) => {
+    let n = clean(s);
+    for (const re of AVATAR) n = n.replace(re, "");
+    return clean(n);
+  };
 
   // ---------------------------------------------------------------- 1. highlighted tiles / aria labels
   function speakingFromAria() {
@@ -15,7 +28,7 @@
     for (const el of document.querySelectorAll("[aria-label]")) {
       const label = el.getAttribute("aria-label");
       if (label && label.length < 120 && SPEAKING_WORDS.test(label)) {
-        const name = clean(label.split(/[,，、]/)[0].replace(SPEAKING_WORDS, ""));
+        const name = personName(label.split(/[,，、]/)[0].replace(SPEAKING_WORDS, ""));
         if (name && name.length <= 40) names.add(name);
       }
     }
@@ -29,7 +42,7 @@
     const names = new Set();
     for (const tile of document.querySelectorAll("[data-participant-id]")) {
       const nameEl = tile.querySelector("[data-self-name], [data-participant-name]");
-      const name = clean(nameEl ? nameEl.getAttribute("data-self-name") || nameEl.textContent : "");
+      const name = personName(nameEl ? nameEl.getAttribute("data-self-name") || nameEl.textContent : "");
       if (!name) continue;
       const indicator = tile.querySelector("[data-audio-level], [data-is-speaking='true']");
       if (indicator && indicator.getAttribute("data-is-speaking") === "true") names.add(name);
@@ -48,7 +61,7 @@
       if (!ring) continue;
       const before = getComputedStyle(ring, "::before");
       const on = String(ring.className).includes("vdi-frame-occlusion") || parseFloat(before.opacity) > 0.5;
-      const name = clean(tile.getAttribute("data-tid"));
+      const name = personName(tile.getAttribute("data-tid"));
       if (on && name) names.add(name);
     }
     return names;
@@ -63,7 +76,7 @@
       return [...document.querySelectorAll("[data-tid='closed-caption-text']")].map((t) => {
         const item = t.closest("li, [role='listitem'], .ui-chat__item") || t.parentElement;
         const author = item && item.querySelector("[data-tid='author'], .ui-chat__message__author");
-        return { el: t, name: clean(author && author.textContent), text: clean(t.textContent) };
+        return { el: t, name: personName(author && author.textContent), text: clean(t.textContent) };
       });
     }
     // Meet: the captions region holds one block per speaker turn: avatar image + name + text
@@ -74,7 +87,7 @@
       const block = img.closest("div[class]")?.parentElement;
       if (!block) continue;
       const parts = [...block.querySelectorAll("div, span")].map((e) => clean(e.textContent)).filter(Boolean);
-      const name = parts.find((p) => p.length <= 40) || "";
+      const name = personName(parts.find((p) => p.length <= 40) || "");
       const text = parts.sort((a, b) => b.length - a.length)[0] || "";
       if (name && text && text !== name) out.push({ el: block, name, text });
     }
@@ -100,8 +113,8 @@
   // The page is briefly inconsistent while it loads, so report the value seen most often.
   const selfVotes = new Map();
   function selfName() {
-    const now = rawSelfName();
-    if (now && !/個人資料圖片|profile picture|頭像|avatar/i.test(now)) selfVotes.set(now, (selfVotes.get(now) || 0) + 1);
+    const now = personName(rawSelfName());
+    if (now) selfVotes.set(now, (selfVotes.get(now) || 0) + 1);
     let best = "", n = 0;
     for (const [k, v] of selfVotes) if (v > n) [best, n] = [k, v];
     return n >= 5 ? best : "";
