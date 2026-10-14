@@ -76,7 +76,9 @@ def nme_sc(E: np.ndarray, max_speakers: int = 8, min_speakers: int = 1) -> np.nd
 
 def merge_with_constraints(E: np.ndarray, durs: np.ndarray, labels: np.ndarray, windows: np.ndarray,
                            same: float = 0.80, together_max: float = 0.3, small_sec: float = 8.0,
-                           small_share: float = 0.10) -> np.ndarray:
+                           small_share: float = 0.10, times: np.ndarray | None = None,
+                           succ_same: float = 0.62, succ_overlap: float = 0.10, succ_together: float = 0.05,
+                           succ_min_span: float = 180.0) -> np.ndarray:
     """Merge over-split clusters into people.
 
     E: voiceprints of local voices (n, d); durs: their clean speech seconds; labels: initial clusters;
@@ -85,6 +87,14 @@ def merge_with_constraints(E: np.ndarray, durs: np.ndarray, labels: np.ndarray, 
     score ~0.86-0.97, different people <= ~0.7. So clusters are merged (most similar first) while the
     similarity is at the same-person level, unless the segmentation often heard them as two voices at the
     same time. Finally clusters with very little speech are folded into the most similar one.
+
+    times (seconds of each local voice): a person whose sound changes mid-meeting (another room or microphone,
+    e.g. a second meeting after the online one ended) scored only 0.66 - as low as two different men (0.58).
+    Voices alone can't tell these apart, but timing can: people in a conversation alternate, while one voice
+    under new conditions simply takes over when the old one stops. So two clusters whose active periods
+    (5-95% of their speech, each >= `succ_min_span`) don't overlap, and that are (almost) never heard in the
+    same window, are merged from `succ_same` on. Trade-off: two similar voices that speak strictly one after
+    the other (each for minutes) can be merged.
     """
     lab = labels.copy()
 
@@ -101,6 +111,15 @@ def merge_with_constraints(E: np.ndarray, durs: np.ndarray, labels: np.ndarray, 
                     together[(cs[i], cs[j])] = together.get((cs[i], cs[j]), 0) + 1
         return ids, cent, present, together
 
+    def successive(a, b) -> bool:
+        if times is None:
+            return False
+        (a0, a1), (b0, b1) = np.percentile(times[lab == a], [5, 95]), np.percentile(times[lab == b], [5, 95])
+        if min(a1 - a0, b1 - b0) < succ_min_span:  # someone who spoke once is always "successive"
+            return False
+        overlap = max(0.0, min(a1, b1) - max(a0, b0))
+        return overlap <= succ_overlap * min(a1 - a0, b1 - b0)
+
     while True:
         ids, cent, present, together = stats()
         best = None
@@ -111,7 +130,9 @@ def merge_with_constraints(E: np.ndarray, durs: np.ndarray, labels: np.ndarray, 
                 if t > together_max * min(present[a], present[b]):
                     continue
                 sim = float(cent[a] @ cent[b])
-                if sim >= same and (best is None or sim > best[0]):
+                ok = sim >= same or (sim >= succ_same and t <= succ_together * min(present[a], present[b])
+                                     and successive(a, b))
+                if ok and (best is None or sim > best[0]):
                     best = (sim, a, b)
         if best is None:
             break

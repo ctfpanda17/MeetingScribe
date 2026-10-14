@@ -330,7 +330,8 @@ class StreamingDiarizer:
         live = np.array([x[3] for x in items])  # live voiceprints: the registry stays in this space
         durs = np.array([x[2] for x in items]) * (stride * self.STEP / self.WINDOW)  # undo window overlap
         wid = np.array([id(x[0]) for x in items])
-        lab = merge_with_constraints(E, durs, nme_sc(E, max_speakers=12), wid)
+        times = np.array([x[0].start for x in items], dtype=float)
+        lab = merge_with_constraints(E, durs, nme_sc(E, max_speakers=12), wid, times=times)
         with self._reg_lock(), self.lock:
             reg = self.reg
             # keep ids: match new clusters to the speakers those voices were assigned to until now
