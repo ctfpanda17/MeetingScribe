@@ -174,3 +174,9 @@ python -m venv .venv
 ```
 
 打包成 exe：執行 `build.bat`，產出在 `dist\MeetingScribe\`，把整個資料夾壓縮成 zip 即可分享。
+
+## 授權
+
+本專案程式碼以 [MIT 授權](LICENSE) 釋出。
+
+程式執行時下載的模型各有自己的授權，使用前請自行確認，例如：SenseVoice（FunAudioLLM）、Breeze-ASR-25（MediaTek Research）、NVIDIA nemotron / TitaNet（NVIDIA）、pyannote segmentation 3.0（MIT）、SpeechBrain ECAPA（Apache 2.0）。
