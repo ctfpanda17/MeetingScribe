@@ -22,7 +22,7 @@ def emit(e):
     elif e["type"] == "discard": segs.pop(e["seg"], None)
     elif e["type"] == "toast": notes.append(e["message"])
 from diarize import ClusterEncoder, cluster_model_path
-s = MeetingSession(eng, SpeakerEncoder("cuda"), emit, {"language": "zh", "latency": eng.default_latency(),
+s = MeetingSession(eng, SpeakerEncoder("cuda"), emit, {"language": os.environ.get("LANG_ASR", "zh"), "latency": eng.default_latency(),
                    "cluster_embed": None if os.environ.get("NOTITANET") else ClusterEncoder(cluster_model_path()).embed},
                    turns=None if os.environ.get("NODIAR") else ChangeDetector(model_path(paths.MODEL_DIR)))
 audio, _ = sf.read(clip, dtype="float32")

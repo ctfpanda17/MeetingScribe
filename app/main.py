@@ -972,11 +972,13 @@ class MainWindow(QMainWindow):
             return json.dumps({"title": title, "segments": [
                 {k: s[k] for k in ("start", "end", "speaker", "text") if k in s} | {"name": name(s)} for s in segs
             ]}, ensure_ascii=False, indent=1)
+        from session import paragraphs
+        paras = paragraphs(segs, name)
         if kind == "md":
             people = "、".join(dict.fromkeys(name(s) for s in segs))
-            body = "\n".join(f"**[{fmt(s['start'])}] {name(s)}**：{s['text']}  " for s in segs)
+            body = "\n".join(f"**[{fmt(t)}] {who}**：{text}  " for t, who, text in paras)
             return f"# {title}\n\n- 日期：{time.strftime('%Y-%m-%d %H:%M')}\n- 與會者：{people}\n\n---\n\n{body}\n"
-        return f"{title}\n\n" + "\n".join(f"[{fmt(s['start'])}] {name(s)}：{s['text']}" for s in segs) + "\n"
+        return f"{title}\n\n" + "\n".join(f"[{fmt(t)}] {who}：{text}" for t, who, text in paras) + "\n"
 
     def export(self, kind: str):
         if not self._final_segments():

@@ -13,6 +13,10 @@ import numpy as np
 
 RES = 0.1  # seconds per hint frame
 ME = "__me__"  # the local microphone
+# Real speech always has pauses that switch the meeting app's speaking cue off within seconds. A cue that stays
+# on longer than this is stuck (seen in a real meeting: one name "spoke" for every voice, even after the call
+# ended), so it is ignored until it switches off again.
+STUCK_SEC = 30.0
 
 
 class SpeakerHints:
@@ -22,6 +26,7 @@ class SpeakerHints:
         self.n = 0
         self.wall0: float | None = None  # wall-clock time of meeting time 0 (set from the audio clock)
         self._active: dict[str, float] = {}  # platform names currently speaking -> since (meeting time)
+        self.stuck: set[str] = set()  # names whose "speaking" cue has been on too long to be real
         self.platform = ""
         self.last_event = 0.0
 
@@ -60,14 +65,22 @@ class SpeakerHints:
         now = set(n.strip()[:60] for n in speaking if n and n.strip())
         for name in list(self._active):
             if name not in now:
-                self.add(name, self._active.pop(name), t_off)
+                since = self._active.pop(name)
+                if name not in self.stuck:
+                    self.add(name, since, t_off)
+        self.stuck &= now  # the cue went off at least once: trust it again
         for name in now:
-            self._active.setdefault(name, t_on)
+            since = self._active.setdefault(name, t_on)
+            if t_on - since > STUCK_SEC and name not in self.stuck:
+                self.stuck.add(name)
+                with self.lock:  # undo what an earlier flush() wrote for this interval
+                    if name in self.tracks:
+                        self.tracks[name][int(max(0.0, since) / RES):int(np.ceil(t_on / RES))] = False
 
     def flush(self, upto: float):
         """Close still-open platform intervals up to `upto` (meeting time), keeping them open."""
         for name, since in list(self._active.items()):
-            if upto > since:
+            if upto > since and name not in self.stuck:
                 self.add(name, since, upto)
 
     # ------------------------------------------------------------------ queries
