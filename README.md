@@ -10,7 +10,7 @@
 
 ## 給使用者：怎麼用
 
-1. 到 [Releases](https://github.com/ctfpanda17/MeetingScribe/releases) 下載 `MeetingScribe-v0.1.0-win64.7z`，用 [7-Zip](https://www.7-zip.org/) 解壓縮（Windows 11 也可直接解壓），執行資料夾裡的 **`MeetingScribe.exe`**
+1. 到 [最新版 Release](https://github.com/ctfpanda17/MeetingScribe/releases/latest) 下載 `MeetingScribe-<版本>-win64.7z`，用 [7-Zip](https://www.7-zip.org/) 解壓縮（Windows 11 也可直接解壓），執行資料夾裡的 **`MeetingScribe.exe`**
 2. 第一次開啟會自動下載預設模型（約 0.5 GB，需要網路，網路中斷會自動續傳），之後可離線使用
 3. 選「音源」：
    - **線上會議 Meet / Teams（對方 + 我）**：預設選項，對方的聲音從電腦收，你的聲音從麥克風收

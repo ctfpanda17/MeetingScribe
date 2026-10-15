@@ -12,7 +12,7 @@ MeetingScribe turns what everyone says into text live, during the meeting, and a
 
 ## For users: how to use it
 
-1. Download `MeetingScribe-v0.1.0-win64.7z` from [Releases](https://github.com/ctfpanda17/MeetingScribe/releases), extract it with [7-Zip](https://www.7-zip.org/) (Windows 11 can also extract it directly), and run **`MeetingScribe.exe`** in the extracted folder
+1. Download `MeetingScribe-<version>-win64.7z` from the [latest release](https://github.com/ctfpanda17/MeetingScribe/releases/latest), extract it with [7-Zip](https://www.7-zip.org/) (Windows 11 can also extract it directly), and run **`MeetingScribe.exe`** in the extracted folder
 2. On first launch, the default model is downloaded automatically (about 0.5 GB, needs internet; interrupted downloads resume automatically). After that it works offline
 3. Choose an audio source (音源):
    - **線上會議 Meet / Teams（對方 + 我）** — online meeting (others + me): the default. Other participants are captured from the computer's audio output, your voice from the microphone
